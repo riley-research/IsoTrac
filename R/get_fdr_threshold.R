@@ -16,6 +16,12 @@ get_fdr_threshold <- function(full_mgf, full_fdr_mgf, aa_seq, protein_mass,
                                      cosine_score_correction,
                                      minimal_isotope_sequence, score)
 
+    # write.csv(targets, "Z:/Tim/26-02-23_eqQ/EpCAM/EpCAM_DIA-PTCR_2800-3350_20260217172110/Analysis/classic.csv",
+    #           row.names = FALSE)
+    #
+    # write.csv(targets2, "Z:/Tim/26-02-23_eqQ/EpCAM/EpCAM_DIA-PTCR_2800-3350_20260217172110/Analysis/cpp.csv",
+    #           row.names = FALSE)
+
     message("Calculating decoy scores scores.")
     decoys <- return_max_cor_scores_cpp(full_fdr_mgf, aa_seq, protein_mass,
                                     isotope_peaks_included, ppm_tolerance,
@@ -59,7 +65,66 @@ get_fdr_threshold <- function(full_mgf, full_fdr_mgf, aa_seq, protein_mass,
   cutoff_value
 }
 
-return_max_cor_scores_parallel <- function(spectrum,
+return_max_cor_scores_parallel_cpp <- function(spectrum,
+                                               aa_seq,
+                                               protein_mass,
+                                               isotope_peaks_included,
+                                               ppm_tolerance,
+                                               cosine_score_correction,
+                                               minimal_isotope_sequence,
+                                               score,
+                                               number_of_cores) {
+
+  # 1. Setup future plan
+  # multisession is the equivalent of a socket cluster
+  future::plan(future::multisession, workers = number_of_cores)
+
+  # Ensure cleanup of workers when function exits
+  on.exit(future::plan(future::sequential))
+
+  # 2. Pre-process data
+  spectrum_list <- split(spectrum, list(spectrum$id, spectrum$slice), drop = TRUE)
+
+  # Efficiency Fix: Calculate template ONCE if it's constant for all spectra
+  # If it depends on temp_spectrum, move this back inside the loop
+  isotopes <- get("isotopes", envir = asNamespace("enviPat"))
+
+  # 3. Parallel execution using future_lapply
+  # future_lapply handles export of globals automatically
+  max_vec <- future.apply::future_lapply(spectrum_list, function(temp_spectrum) {
+
+    if (nrow(temp_spectrum) == 0) return(0.0)
+
+    isotope_template <- get_isotope_template(
+      temp_spectrum, # Use the actual slice
+      aa_seq,
+      protein_mass,
+      isotope_peaks_included,
+      isotopes = isotopes
+    )
+
+    cor_vec <- vapply(temp_spectrum$mz, function(x) {
+      IsotopeExtractor:::isotopefit_opt_cpp(
+        spectrum = temp_spectrum,
+        isotope_template = isotope_template,
+        poi = x,
+        ppm_tolerance = ppm_tolerance,
+        cosine_score_correction = cosine_score_correction,
+        minimal_isotope_sequence = minimal_isotope_sequence,
+        score = score
+      )
+    }, numeric(1))
+
+    res <- max(cor_vec, na.rm = TRUE)
+    return(if(is.infinite(res)) 0.0 else res)
+
+  }, future.seed = TRUE, future.packages = c("IsotopeExtractor", "enviPat", "Rcpp"))
+
+  # Return as a combined vector
+  return(unlist(max_vec))
+}
+
+return_max_cor_scores_parallel_cpp_old <- function(spectrum,
                                            aa_seq,
                                            protein_mass,
                                            isotope_peaks_included,
@@ -69,7 +134,7 @@ return_max_cor_scores_parallel <- function(spectrum,
                                            score,
                                            number_of_cores) {
 
-  cl <- parallel::makeCluster(number_of_cores)
+  cl <- parallel::makeCluster(number_of_cores, outfile = "Z:/Tim/26-02-23_eqQ/EpCAM/EpCAM_DIA-PTCR_2800-3350_20260217172110/Analysis/cpp.log")
   doParallel::registerDoParallel(cl)
 
   spectrum_list <- split(spectrum, list(spectrum$id, spectrum$slice),
@@ -95,6 +160,61 @@ return_max_cor_scores_parallel <- function(spectrum,
 
     cor_vec <- vapply(temp_spectrum$mz, function(x) {
       isotopefit_opt_cpp(
+        spectrum = temp_spectrum,
+        isotope_template = isotope_template,
+        poi = x,
+        ppm_tolerance,
+        cosine_score_correction,
+        minimal_isotope_sequence,
+        score
+      )
+    }, numeric(1))
+
+    max(cor_vec, na.rm = TRUE)
+
+  }
+
+  parallel::stopCluster(cl)
+
+  max_vec
+}
+
+return_max_cor_scores_parallel <- function(spectrum,
+                                           aa_seq,
+                                           protein_mass,
+                                           isotope_peaks_included,
+                                           ppm_tolerance,
+                                           cosine_score_correction,
+                                           minimal_isotope_sequence,
+                                           score,
+                                           number_of_cores) {
+
+  cl <- parallel::makeCluster(number_of_cores)
+  doParallel::registerDoParallel(cl)
+
+  spectrum_list <- split(spectrum, list(spectrum$id, spectrum$slice),
+                         drop = TRUE)
+
+  isotopes <- get("isotopes", envir = asNamespace("enviPat"))
+
+  max_vec <- foreach::foreach(
+    temp_spectrum = spectrum_list,
+    .packages = c("dplyr", "ggplot2", "tidyr", "enviPat", "IsotopeExtractor"),
+    .export = c(
+      "get_isotope_template",
+      "isotopefit_opt",
+      "amino_acid_composition"
+    ),
+    .combine = c
+  ) %dopar% {
+    isotope_template <- get_isotope_template(temp_spectrum,
+                                             aa_seq,
+                                             protein_mass,
+                                             isotope_peaks_included,
+                                             isotopes = isotopes)
+
+    cor_vec <- vapply(temp_spectrum$mz, function(x) {
+      isotopefit_opt(
         spectrum = temp_spectrum,
         isotope_template = isotope_template,
         poi = x,

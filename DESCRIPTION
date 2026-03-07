@@ -23,6 +23,7 @@ Imports:
     parallel,
     lsa,
     qpdf,
-    Rcpp
+    Rcpp,
+    future
 LinkingTo: 
     Rcpp
