@@ -11,7 +11,7 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // isotopefit_opt_cpp
-double isotopefit_opt_cpp(const DataFrame& spectrum, const DataFrame& isotope_template, double poi, double ppm_tolerance, double cosine_score_correction, NumericVector minimal_isotope_sequence, std::string score);
+Rcpp::NumericVector isotopefit_opt_cpp(const DataFrame& spectrum, const DataFrame& isotope_template, double poi, double ppm_tolerance, double cosine_score_correction, NumericVector minimal_isotope_sequence, std::string score);
 RcppExport SEXP _IsotopeExtractor_isotopefit_opt_cpp(SEXP spectrumSEXP, SEXP isotope_templateSEXP, SEXP poiSEXP, SEXP ppm_toleranceSEXP, SEXP cosine_score_correctionSEXP, SEXP minimal_isotope_sequenceSEXP, SEXP scoreSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;

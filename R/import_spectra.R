@@ -51,10 +51,10 @@ scan_range_filter <- function(spectrum, scan_range) {
 intensity_filter <- function(spectrum, intensity_threshold) {
   keep <- spectrum |>
     dplyr::filter(.data$intensity >= intensity_threshold) |>
-    dplyr::pull(.data$peakgroup)
+    dplyr::distinct(.data$id, .data$peakgroup)
 
   spectrum <- spectrum |>
-    dplyr::filter(.data$peakgroup %in% keep)
+    dplyr::semi_join(keep, by = c("id", "peakgroup"))
 
   spectrum
 }

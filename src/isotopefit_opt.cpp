@@ -6,13 +6,13 @@
 using namespace Rcpp;
 
 // [[Rcpp::export]]
-double isotopefit_opt_cpp(const DataFrame& spectrum,
-                          const DataFrame& isotope_template,
-                          double poi,
-                          double ppm_tolerance,
-                          double cosine_score_correction,
-                          NumericVector minimal_isotope_sequence,
-                          std::string score) {
+Rcpp::NumericVector isotopefit_opt_cpp(const DataFrame& spectrum,
+                                       const DataFrame& isotope_template,
+                                       double poi,
+                                       double ppm_tolerance,
+                                       double cosine_score_correction,
+                                       NumericVector minimal_isotope_sequence,
+                                       std::string score) {
 
   // 1. Extract and Clone (Safe modification)
   NumericVector spec_mz = spectrum["mz"];
@@ -109,7 +109,10 @@ double isotopefit_opt_cpp(const DataFrame& spectrum,
   // --- Step 4: Validate Minimal Sequence ---
   for(int i = 0; i < minimal_isotope_sequence.size(); ++i) {
     if(std::find(found_seq.begin(), found_seq.end(), (int)minimal_isotope_sequence[i]) == found_seq.end()) {
-      return 0.0;
+      return Rcpp::NumericVector::create(
+        Rcpp::Named("pearson") = 0.0,
+        Rcpp::Named("cosine") = 0.0
+      );
     }
   }
 
@@ -138,36 +141,63 @@ double isotopefit_opt_cpp(const DataFrame& spectrum,
     } else break;
   }
 
-  if(final_temp.size() < 5) return 0.0;
+  if(final_temp.size() < 5) return Rcpp::NumericVector::create(
+      Rcpp::Named("pearson") = 0.0,
+      Rcpp::Named("cosine") = 0.0
+  );
 
   // --- Step 5: Scoring (Pearson / Cosine) ---
-  if(score == "pearson") {
-    double sum_a = 0, sum_b = 0;
-    for(size_t i=0; i<final_temp.size(); ++i) { sum_a += final_temp[i]; sum_b += final_spec[i]; }
-    double m_a = sum_a / final_temp.size(), m_b = sum_b / final_temp.size();
-    double num = 0, den_a = 0, den_b = 0;
-    for(size_t i=0; i<final_temp.size(); ++i) {
-      num += (final_temp[i]-m_a)*(final_spec[i]-m_b);
-      den_a += std::pow(final_temp[i]-m_a, 2);
-      den_b += std::pow(final_spec[i]-m_b, 2);
-    }
-    return (den_a > 1e-12 && den_b > 1e-12) ? num / std::sqrt(den_a * den_b) : 0.0;
-
-  } else if(score == "cosine") {
-    double min_val = final_temp[0];
-    for(size_t i=0; i<final_temp.size(); ++i) {
-      if(final_temp[i] < min_val) min_val = final_temp[i];
-      if(final_spec[i] < min_val) min_val = final_spec[i];
-    }
-    double offset = min_val * cosine_score_correction;
-    double dot = 0, mag_a = 0, mag_b = 0;
-    for(size_t i=0; i<final_temp.size(); ++i) {
-      double a = final_temp[i] - offset;
-      double b = final_spec[i] - offset;
-      dot += a * b; mag_a += a * a; mag_b += b * b;
-    }
-    return (mag_a > 1e-12 && mag_b > 1e-12) ? dot / (std::sqrt(mag_a) * std::sqrt(mag_b)) : 0.0;
+  // Guard against empty vectors to avoid the "length 0" R error
+  if (final_temp.size() == 0) {
+    return Rcpp::NumericVector::create(
+      Rcpp::Named("pearson") = 0.0,
+      Rcpp::Named("cosine") = 0.0
+    );
   }
 
-  return 0.0;
+  // --- 5a. PEARSON CALCULATION ---
+  // Using a dedicated scope or unique variable names to prevent leakage
+  double p_sum_a = 0, p_sum_b = 0;
+  for(size_t i=0; i < final_temp.size(); ++i) {
+    p_sum_a += final_temp[i];
+    p_sum_b += final_spec[i];
+  }
+
+  double p_m_a = p_sum_a / final_temp.size();
+  double p_m_b = p_sum_b / final_temp.size();
+  double p_num = 0, p_den_a = 0, p_den_b = 0;
+
+  for(size_t i=0; i < final_temp.size(); ++i) {
+    double diff_a = final_temp[i] - p_m_a;
+    double diff_b = final_spec[i] - p_m_b;
+    p_num += diff_a * diff_b;
+    p_den_a += diff_a * diff_a;
+    p_den_b += diff_b * diff_b;
+  }
+  double pearson_result = (p_den_a > 1e-12 && p_den_b > 1e-12) ? p_num / std::sqrt(p_den_a * p_den_b) : 0.0;
+
+  // --- 5b. COSINE CALCULATION ---
+  double c_min_val = final_temp[0];
+  for(size_t i=0; i < final_temp.size(); ++i) {
+    if(final_temp[i] < c_min_val) c_min_val = final_temp[i];
+    if(final_spec[i] < c_min_val) c_min_val = final_spec[i];
+  }
+
+  double c_offset = c_min_val * cosine_score_correction;
+  double c_dot = 0, c_mag_a = 0, c_mag_b = 0;
+
+  for(size_t i=0; i < final_temp.size(); ++i) {
+    double a_off = final_temp[i] - c_offset;
+    double b_off = final_spec[i] - c_offset;
+    c_dot += a_off * b_off;
+    c_mag_a += a_off * a_off;
+    c_mag_b += b_off * b_off;
+  }
+  double cosine_result = (c_mag_a > 1e-12 && c_mag_b > 1e-12) ? c_dot / (std::sqrt(c_mag_a) * std::sqrt(c_mag_b)) : 0.0;
+
+  // --- Return exactly two values ---
+  return Rcpp::NumericVector::create(
+    Rcpp::Named("pearson") = pearson_result,
+    Rcpp::Named("cosine") = cosine_result
+  );
 }

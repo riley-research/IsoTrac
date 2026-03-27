@@ -1,9 +1,9 @@
 get_fdr_threshold <- function(full_mgf, full_fdr_mgf, aa_seq, protein_mass,
                               score = "cosine", number_of_cores = 1,
-                              isotope_peaks_included = 3, cutoff = 0.05,
+                              isotope_peaks_included = 3, cutoff = 0.01,
                               ppm_tolerance = 20, cosine_score_correction = 1,
                               minimal_isotope_sequence = c(-2, -1, 0, 1, 2),
-                              show_plot = TRUE) {
+                              show_plot = TRUE, plot_bins = 0.006) {
   full_mgf <- full_mgf |>
     dplyr::filter(!is.na(.data$centroided_intensity))
 
@@ -15,12 +15,6 @@ get_fdr_threshold <- function(full_mgf, full_fdr_mgf, aa_seq, protein_mass,
                                      isotope_peaks_included, ppm_tolerance,
                                      cosine_score_correction,
                                      minimal_isotope_sequence, score)
-
-    # write.csv(targets, "Z:/Tim/26-02-23_eqQ/EpCAM/EpCAM_DIA-PTCR_2800-3350_20260217172110/Analysis/classic.csv",
-    #           row.names = FALSE)
-    #
-    # write.csv(targets2, "Z:/Tim/26-02-23_eqQ/EpCAM/EpCAM_DIA-PTCR_2800-3350_20260217172110/Analysis/cpp.csv",
-    #           row.names = FALSE)
 
     message("Calculating decoy scores scores.")
     decoys <- return_max_cor_scores_cpp(full_fdr_mgf, aa_seq, protein_mass,
@@ -59,7 +53,7 @@ get_fdr_threshold <- function(full_mgf, full_fdr_mgf, aa_seq, protein_mass,
 
 
   if (show_plot) {
-    plot_fdr_results(targets, decoys, cutoff_value)
+    plot_fdr_results(targets, decoys, cutoff_value, plot_bins)
   }
 
   cutoff_value
@@ -74,6 +68,12 @@ return_max_cor_scores_parallel_cpp <- function(spectrum,
                                                minimal_isotope_sequence,
                                                score,
                                                number_of_cores) {
+
+  if (score == "pearson") {
+    col_number <- 1
+  } else{
+    col_number <- 2
+  }
 
   # 1. Setup future plan
   # multisession is the equivalent of a socket cluster
@@ -113,9 +113,10 @@ return_max_cor_scores_parallel_cpp <- function(spectrum,
         minimal_isotope_sequence = minimal_isotope_sequence,
         score = score
       )
-    }, numeric(1))
+    }, numeric(2))
 
-    res <- max(cor_vec, na.rm = TRUE)
+    res <- max(cor_vec[col_number,], na.rm = TRUE)
+
     return(if(is.infinite(res)) 0.0 else res)
 
   }, future.seed = TRUE, future.packages = c("IsotopeExtractor", "enviPat", "Rcpp"))
@@ -271,6 +272,12 @@ return_max_cor_scores_cpp <- function(spectrum, aa_seq, protein_mass,
                                   cosine_score_correction,
                                   minimal_isotope_sequence, score) {
 
+  if (score == "pearson") {
+    col_number <- 1
+  } else{
+    col_number <- 2
+  }
+
   spectrum_list <- split(spectrum, list(spectrum$id, spectrum$slice),
                          drop = TRUE)
 
@@ -290,9 +297,9 @@ return_max_cor_scores_cpp <- function(spectrum, aa_seq, protein_mass,
         minimal_isotope_sequence,
         score
       )
-    }, numeric(1))
+    }, numeric(2))
 
-    max(cor_vec, na.rm = TRUE)
+    max(cor_vec[col_number,], na.rm = TRUE)
 
   }, numeric(1))
 
@@ -324,7 +331,6 @@ get_isotope_template <- function(spectrum, aa_seq, protein_mass,
                                  total_comp,
                                  charge = spectrum$charge[1],
                                  threshold = 0.01,
-                                 emass = 0.00054858,
                                  verbose = FALSE,
                                  plotit = FALSE,
                                  algo = 1)
@@ -789,13 +795,13 @@ compute_qvalues <- function(targets, decoys, cutoff) {
   return_val
 }
 
-plot_fdr_results <- function(target_scores, decoy_scores, cutoff_value) {
+plot_fdr_results <- function(target_scores, decoy_scores, cutoff_value, plot_bins) {
   target_df <- data.frame(score = as.vector(unlist(target_scores)),
                           type = "target") |>
     dplyr::filter(.data$score != 0) |>
     dplyr::mutate()
 
-  target_df$bin <- binner(target_df$score, 0.006)
+  target_df$bin <- binner(target_df$score, plot_bins)
   target_df <- target_df |>
     dplyr::count(.data$bin, name = "count")
 
@@ -803,7 +809,7 @@ plot_fdr_results <- function(target_scores, decoy_scores, cutoff_value) {
                          type = "decoy") |>
     dplyr::filter(.data$score != 0)
 
-  decoy_df$bin <- binner(decoy_df$score, 0.006)
+  decoy_df$bin <- binner(decoy_df$score, plot_bins)
   decoy_df <- decoy_df |>
     dplyr::count(.data$bin, name = "count")
 
