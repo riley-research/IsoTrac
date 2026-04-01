@@ -1,5 +1,5 @@
 get_fdr_threshold <- function(full_mgf, full_fdr_mgf, aa_seq, protein_mass,
-                              score = "cosine", number_of_cores = 1,
+                              score = c("cosine", "pearson", "NRMSE"), number_of_cores = 1,
                               isotope_peaks_included = 3, cutoff = 0.01,
                               ppm_tolerance = 20, cosine_score_correction = 1,
                               minimal_isotope_sequence = c(-2, -1, 0, 1, 2),
@@ -49,8 +49,11 @@ get_fdr_threshold <- function(full_mgf, full_fdr_mgf, aa_seq, protein_mass,
     )
   }
 
-  cutoff_value <- compute_qvalues(targets, decoys, cutoff)
-
+  if (score == "NRMSE") {
+    cutoff_value <- compute_qvalues(targets, decoys, cutoff, dec = FALSE)
+  } else {
+    cutoff_value <- compute_qvalues(targets, decoys, cutoff)
+  }
 
   if (show_plot) {
     plot_fdr_results(targets, decoys, cutoff_value, plot_bins)
@@ -71,8 +74,10 @@ return_max_cor_scores_parallel_cpp <- function(spectrum,
 
   if (score == "pearson") {
     col_number <- 1
-  } else{
+  } else if (score == "cosine"){
     col_number <- 2
+  } else if (score == "NRMSE") {
+    col_number <- 3
   }
 
   # 1. Setup future plan
@@ -113,7 +118,7 @@ return_max_cor_scores_parallel_cpp <- function(spectrum,
         minimal_isotope_sequence = minimal_isotope_sequence,
         score = score
       )
-    }, numeric(2))
+    }, numeric(3))
 
     res <- max(cor_vec[col_number,], na.rm = TRUE)
 
@@ -274,8 +279,10 @@ return_max_cor_scores_cpp <- function(spectrum, aa_seq, protein_mass,
 
   if (score == "pearson") {
     col_number <- 1
-  } else{
+  } else if (score == "cosine"){
     col_number <- 2
+  } else if (score == "NRMSE") {
+    col_number <- 3
   }
 
   spectrum_list <- split(spectrum, list(spectrum$id, spectrum$slice),
@@ -297,9 +304,13 @@ return_max_cor_scores_cpp <- function(spectrum, aa_seq, protein_mass,
         minimal_isotope_sequence,
         score
       )
-    }, numeric(2))
+    }, numeric(3))
 
-    max(cor_vec[col_number,], na.rm = TRUE)
+    if (score == "NRMSE") {
+      return(min(cor_vec[col_number,], na.rm = TRUE))
+    }else {
+      return(max(cor_vec[col_number,], na.rm = TRUE))
+    }
 
   }, numeric(1))
 
@@ -769,7 +780,7 @@ isotopefit_opt_old <- function(spectrum, isotope_template, poi,
   fit
 }
 
-compute_qvalues <- function(targets, decoys, cutoff) {
+compute_qvalues <- function(targets, decoys, cutoff, dec = TRUE) {
   correction <- 1
   targets <- as.numeric(as.vector(unlist(targets)))
   decoys <- as.numeric(as.vector(unlist(decoys)))
@@ -779,7 +790,7 @@ compute_qvalues <- function(targets, decoys, cutoff) {
               rep(0, length(decoys)))
 
   df <- data.frame(score = scores, target = labels)
-  df <- df[order(df$score, decreasing = TRUE), ]
+  df <- df[order(df$score, decreasing = dec), ]
 
   df$cum_target <- cumsum(df$target)
   df$cum_decoy  <- cumsum(1 - df$target)
@@ -789,16 +800,21 @@ compute_qvalues <- function(targets, decoys, cutoff) {
 
   return_val <- df |>
     dplyr::filter(.data$qvalue <= cutoff) |>
-    dplyr::pull(.data$score) |>
-    min(na.rm = TRUE)
+    dplyr::pull(.data$score)
 
-  return_val
+  if (dec) {
+    return(return_val |>
+             min(na.rm = TRUE))
+  } else{
+    return(return_val |>
+             max(na.rm = TRUE))
+  }
 }
 
 plot_fdr_results <- function(target_scores, decoy_scores, cutoff_value, plot_bins) {
   target_df <- data.frame(score = as.vector(unlist(target_scores)),
                           type = "target") |>
-    dplyr::filter(.data$score != 0) |>
+    dplyr::filter(.data$score != 0 & .data$score != 999) |>
     dplyr::mutate()
 
   target_df$bin <- binner(target_df$score, plot_bins)
@@ -807,7 +823,7 @@ plot_fdr_results <- function(target_scores, decoy_scores, cutoff_value, plot_bin
 
   decoy_df <- data.frame(score = as.vector(unlist(decoy_scores)),
                          type = "decoy") |>
-    dplyr::filter(.data$score != 0)
+    dplyr::filter(.data$score != 0& .data$score != 999)
 
   decoy_df$bin <- binner(decoy_df$score, plot_bins)
   decoy_df <- decoy_df |>

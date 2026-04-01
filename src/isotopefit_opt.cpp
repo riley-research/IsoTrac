@@ -110,8 +110,9 @@ Rcpp::NumericVector isotopefit_opt_cpp(const DataFrame& spectrum,
   for(int i = 0; i < minimal_isotope_sequence.size(); ++i) {
     if(std::find(found_seq.begin(), found_seq.end(), (int)minimal_isotope_sequence[i]) == found_seq.end()) {
       return Rcpp::NumericVector::create(
-        Rcpp::Named("pearson") = 0.0,
-        Rcpp::Named("cosine") = 0.0
+        Rcpp::Named("pearson")   = 0.0,
+        Rcpp::Named("cosine")    = 0.0,
+        Rcpp::Named("rmse_pct")  = 999.0
       );
     }
   }
@@ -142,16 +143,18 @@ Rcpp::NumericVector isotopefit_opt_cpp(const DataFrame& spectrum,
   }
 
   if(final_temp.size() < 5) return Rcpp::NumericVector::create(
-      Rcpp::Named("pearson") = 0.0,
-      Rcpp::Named("cosine") = 0.0
+      Rcpp::Named("pearson")   = 0.0,
+      Rcpp::Named("cosine")    = 0.0,
+      Rcpp::Named("rmse_pct")  = 999.0
   );
 
   // --- Step 5: Scoring (Pearson / Cosine) ---
   // Guard against empty vectors to avoid the "length 0" R error
   if (final_temp.size() == 0) {
     return Rcpp::NumericVector::create(
-      Rcpp::Named("pearson") = 0.0,
-      Rcpp::Named("cosine") = 0.0
+      Rcpp::Named("pearson")   = 0.0,
+      Rcpp::Named("cosine")    = 0.0,
+      Rcpp::Named("rmse_pct")  = 999.0
     );
   }
 
@@ -176,28 +179,79 @@ Rcpp::NumericVector isotopefit_opt_cpp(const DataFrame& spectrum,
   }
   double pearson_result = (p_den_a > 1e-12 && p_den_b > 1e-12) ? p_num / std::sqrt(p_den_a * p_den_b) : 0.0;
 
-  // --- 5b. COSINE CALCULATION ---
-  double c_min_val = final_temp[0];
-  for(size_t i=0; i < final_temp.size(); ++i) {
-    if(final_temp[i] < c_min_val) c_min_val = final_temp[i];
-    if(final_spec[i] < c_min_val) c_min_val = final_spec[i];
+  // --- 5b. COSINE & NRMSE (%) CALCULATION ---
+  if (final_temp.empty() || final_spec.size() != final_temp.size()) {
+    return Rcpp::NumericVector::create(
+      Rcpp::Named("pearson")   = 0.0,
+      Rcpp::Named("cosine")    = 0.0,
+      Rcpp::Named("rmse_pct")  = 999.0
+    );
   }
 
-  double c_offset = c_min_val * cosine_score_correction;
-  double c_dot = 0, c_mag_a = 0, c_mag_b = 0;
+  // 2. INITIALIZE MIN/MAX
+  double c_min_val = final_temp[0]; // For cosine offset calculation
+  double max_val   = final_temp[0]; // For NRMSE range calculation
+  double min_val   = final_temp[0]; // For NRMSE range calculation
 
-  for(size_t i=0; i < final_temp.size(); ++i) {
-    double a_off = final_temp[i] - c_offset;
-    double b_off = final_spec[i] - c_offset;
-    c_dot += a_off * b_off;
+  // 3. SINGLE LOOP FOR MIN/MAX/RANGE
+  // We isolate final_temp for range/offset to keep the scaling consistent with the reference
+  for(size_t i = 0; i < final_temp.size(); ++i) {
+    // Offset logic: Find the global minimum across both spectra if needed
+    if(final_temp[i] < c_min_val) c_min_val = final_temp[i];
+    if(final_spec[i] < c_min_val) c_min_val = final_spec[i];
+
+    // NRMSE logic: Find the range of the reference peak (final_temp)
+    if(final_temp[i] > max_val) max_val = final_temp[i];
+    if(final_temp[i] < min_val) min_val = final_temp[i];
+  }
+
+  double peak_range = max_val - min_val;
+  double c_offset   = c_min_val * cosine_score_correction;
+
+  double c_dot = 0, c_mag_a = 0, c_mag_b = 0;
+  double sum_sq_diff = 0;
+
+  // 4. CALCULATION LOOP
+  for(size_t i = 0; i < final_temp.size(); ++i) {
+    double a_val = final_temp[i];
+    double b_val = final_spec[i];
+
+    // RMSE accumulation
+    double diff = a_val - b_val;
+    sum_sq_diff += diff * diff;
+
+    // Cosine accumulation with offset
+    double a_off = a_val - c_offset;
+    double b_off = b_val - c_offset;
+
+    c_dot   += a_off * b_off;
     c_mag_a += a_off * a_off;
     c_mag_b += b_off * b_off;
   }
-  double cosine_result = (c_mag_a > 1e-12 && c_mag_b > 1e-12) ? c_dot / (std::sqrt(c_mag_a) * std::sqrt(c_mag_b)) : 0.0;
 
-  // --- Return exactly two values ---
+  // 5. FINAL CALCULATION SAFETY GATES
+  double cosine_result = 0.0;
+  // Use a slightly larger epsilon (1e-15) and check for NaN/Inf stability
+  if (c_mag_a > 1e-15 && c_mag_b > 1e-15) {
+    double denom = std::sqrt(c_mag_a) * std::sqrt(c_mag_b);
+    cosine_result = c_dot / denom;
+
+    // Clamp cosine to [-1, 1] to prevent floating point precision errors
+    // returning 1.00000000000002
+    if (cosine_result > 1.0) cosine_result = 1.0;
+    if (cosine_result < -1.0) cosine_result = -1.0;
+  }
+
+  // RMSE Calculation
+  double rmse_val = std::sqrt(sum_sq_diff / static_cast<double>(final_temp.size()));
+
+  // NRMSE Calculation: Prevent division by zero if peak is flat
+  double nrmse_percent = (peak_range > 1e-12) ? (rmse_val / peak_range) * 100.0 : 0.0;
+
+  // --- Return the values ---
   return Rcpp::NumericVector::create(
-    Rcpp::Named("pearson") = pearson_result,
-    Rcpp::Named("cosine") = cosine_result
+    Rcpp::Named("pearson")   = pearson_result,
+    Rcpp::Named("cosine")    = cosine_result,
+    Rcpp::Named("rmse_pct")  = nrmse_percent
   );
 }

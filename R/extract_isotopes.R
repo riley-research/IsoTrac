@@ -1,6 +1,6 @@
 extract_isotopes <- function(full_mgf, aa_seq, protein_mass,
                              threshold, output_folder,
-                             score = "cosine", number_of_cores = 1,
+                             score = c("cosine", "pearson", "NRMSE"), number_of_cores = 1,
                              isotope_peaks_included = 3, cutoff = 0.05,
                              ppm_tolerance = 20, cosine_score_correction = 1,
                              minimal_isotope_sequence = c(-2, -1, 0, 1, 2)) {
@@ -131,13 +131,15 @@ runner_parallel <- function(all_frames,
             minimal_isotope_sequence = minimal_isotope_sequence,
             score = score
           )
-        }, numeric(2)) # numeric(2) is the key here
+        }, numeric(3))
 
-        temp_spectrum[, c("pearson", "cosine")] <- t(score_matrix)
+        temp_spectrum[, c("pearson", "cosine", "NRMSE")] <- t(score_matrix)
         if (score == "pearson") {
           temp_spectrum$cor <- temp_spectrum$pearson
         }else if (score == "cosine") {
           temp_spectrum$cor <- temp_spectrum$cosine
+        } else if (score == "NRMSE") {
+          temp_spectrum$cor <- temp_spectrum$NRMSE
         }
 
         if (max(temp_spectrum$cor, na.rm = TRUE) >= threshold) {
@@ -277,20 +279,27 @@ runner_sequential <- function(all_frames,
               minimal_isotope_sequence = minimal_isotope_sequence,
               score = score
             )
-          }, numeric(2)) # numeric(2) is the key here
+          }, numeric(3))
 
-          temp_spectrum[, c("pearson", "cosine")] <- t(score_matrix)
+          temp_spectrum[, c("pearson", "cosine", "NRMSE")] <- t(score_matrix)
           if (score == "pearson") {
             temp_spectrum$cor <- temp_spectrum$pearson
           }else if (score == "cosine") {
             temp_spectrum$cor <- temp_spectrum$cosine
+          } else if (score == "NRMSE") {
+            temp_spectrum$cor <- temp_spectrum$NRMSE
           }
 
           #If the maximum score is higher than the set threshold
           #Replot and substract the isotope fit
           #Return the spectrum, p1, lineToAdd
-          if (max(temp_spectrum$cor) >= threshold) {
-            poi <- subset(temp_spectrum, cor == max(temp_spectrum$cor))$mz
+          if ((score %in% c("pearson", "cosine") & max(temp_spectrum$cor) >= threshold) |
+              (score == "NRMSE" & min(temp_spectrum$cor) <= threshold)) {
+            if (score == "NRMSE") {
+              poi <- subset(temp_spectrum, cor == min(temp_spectrum$cor))$mz
+            } else {
+              poi <- subset(temp_spectrum, cor == max(temp_spectrum$cor))$mz
+            }
 
             temp <- substract_isotope_fit_opt(
               spectrum = temp_spectrum,
@@ -324,7 +333,21 @@ runner_sequential <- function(all_frames,
           }else {
             inaction = FALSE
 
-            if (!isotopeidentified) {
+            if (!isotopeidentified & score == "NRMSE") {
+              if (nrow(local_none_found_df) == 0) {
+                local_none_found_df <-
+                  subset(
+                    temp_spectrum,
+                    cor == min(temp_spectrum$cor)
+                  )[1, ]
+              }else {
+                local_none_found_df <-
+                  rbind(
+                    local_none_found_df,
+                    subset(temp_spectrum, cor == min(temp_spectrum$cor))[1, ]
+                  )
+              }
+            }else {
               if (nrow(local_none_found_df) == 0) {
                 local_none_found_df <-
                   subset(
@@ -492,6 +515,25 @@ substract_isotope_fit_opt <- function(spectrum,
       num <- sum(a * b)
       den <- sqrt(sum(a^2)) * sqrt(sum(b^2))
       fit <- if(den > 0) num / den else 0
+    }else if (score == "NRMSE") {
+      min_val <- min(c(final_temp, final_spec))
+      offset <- min_val * cosine_score_correction
+
+      a <- final_temp - offset
+      b <- final_spec - offset
+
+      diff_sq <- (a - b)^2
+      sum_sq_diff <- sum(diff_sq)
+
+      rmse_val <- sqrt(sum_sq_diff / length(final_temp))
+
+      peak_range <- max(a) - min(b)
+
+      if (peak_range > 1e-12) {
+        fit <- (rmse_val / peak_range) * 100.0
+      } else {
+        fit <- 999.0
+      }
     }
   }
 
