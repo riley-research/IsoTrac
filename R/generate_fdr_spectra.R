@@ -1,3 +1,32 @@
+#' Generate FDR Decoy Spectra Intensities
+#'
+#' @description
+#' Prepares mass spectrometry data for False Discovery Rate (FDR) estimation by manipulating
+#' peak intensities. When using the default `"supervised"` approach, it replaces the original
+#' centroided peak intensities with simulated values that mimic an upward trend over cycles
+#' defined by expected isotopic patterns.
+#'
+#' @param full_mgf \code{data.frame}. The data imported using the \code{\link{import_spectra}}
+#' function.
+#' @param isotope_peaks_included \code{integer}. The number of peaks expected per isotopic cluster
+#' phase (used as the cycle length/bucket count for the simulated intensity trends).
+#' @param fdr_approach \code{character}. The methodology used for decoy generation. Currently supports
+#' \code{"supervised"} to simulate bounded, cyclic trend intensities. Default is \code{"supervised"}.
+#'
+#' @return A \code{data.frame} filtered for valid centroid entries, containing either the original
+#' or the newly simulated decoy \code{centroided_intensity} values grouped by spectra ID and slice.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Assuming `processed_mgf` is the output from import_spectra
+#' decoy_mgf <- generate_fdr_spectra(
+#'   full_mgf = processed_mgf,
+#'   isotope_peaks_included = 3,
+#'   fdr_approach = "supervised"
+#' )
+#' }
 generate_fdr_spectra <- function(full_mgf, isotope_peaks_included, fdr_approach = "supervised") {
   full_mgf <- full_mgf |>
     dplyr::filter(!is.na(.data$centroided_intensity))

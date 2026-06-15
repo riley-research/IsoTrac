@@ -5,5 +5,5 @@
 NULL
 
 .onLoad <- function(libname, pkgname) {
-  data("isotopes", package = "enviPat", envir = parent.env(environment()))
+  utils::data("isotopes", package = "enviPat", envir = parent.env(environment()))
 }

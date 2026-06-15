@@ -1,9 +1,65 @@
+#' Extract Isotope Fit Patterns from Mass Spectrometry Data
+#'
+#' Determines intact masses from the dataset imported using the import_spectra function,
+#' by iteratively matching molecular isotope patterns. Processing can be
+#' executed sequentially or in parallel using a \code{future} backend. Matched and unmatched
+#' spectra profiles are written out as binned CSV tables and visual PDF spectrum plots.
+#'
+#' @param full_mgf \code{data.frame}. The data imported using the \code{\link{import_spectra}}
+#' function.
+#' @param aa_seq \code{character}. Primary amino acid sequence of the target protein backbone
+#'   used for matching theoretical distribution envelopes.
+#' @param protein_mass \code{numeric}. Average mass of the bare protein backbone.
+#' @param threshold \code{numeric}. Minimum similarity fit score required to accept and
+#'   subtract an isotopic envelope from the spectrum.
+#' @param output_folder \code{character}. Path to the parent directory where the timestamped
+#'   results folder and diagnostic files will be created.
+#' @param score \code{character}. Vector choice containing the similarity metric to optimize.
+#'   Must be one of \code{"pearson"}, \code{"cosine"}, or \code{"NRMSE"}.
+#' @param number_of_cores \code{integer}. Number of parallel workers to allocate for the
+#'   \code{future} multisession execution. Default is \code{1}.
+#' @param isotope_peaks_included \code{integer}. Total number of isotopic peaks trailing the
+#'   most intense centroided peak tracked within the calculation frame. Default is \code{3}.
+#' @param cutoff \code{numeric}. General filtering score threshold limit constraint. Default is \code{0.05}.
+#' @param ppm_tolerance \code{numeric}. Maximum allowable mass error assignment threshold in
+#'   parts-per-million (\code{PPM}) between experimental and template centroids. Default is \code{20}.
+#' @param cosine_score_correction \code{numeric}. Intensity multiplier offset constant applied
+#'   during manual vector translation checks. Default is \code{1}.
+#' @param minimal_isotope_sequence \code{numeric vector}. Array of required continuous isotope
+#'   peaks (e.g., \code{c(-2, -1, 0, 1, 2)}).
+#' @param nrmse_cutoff \code{numeric}. Normalized Root Mean Square Error limit cutoff filter.
+#'   Default is \code{0}.
+#'
+#' @return \code{list}. A structured list containing two data frames:
+#'   \itemize{
+#'     \item \code{founddf}: Data frame containing peaks matching the template threshold bounds.
+#'     \item \code{nonefounddf}: Data frame containing spectrum features failing template criteria.
+#'   }
+#'
+#' @seealso \code{\link[future:plan]{future::plan}}, \code{\link[ggplot2:ggsave]{ggplot2::ggsave}}
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' extraction_results <- extract_isotopes(
+#'   full_mgf = experimental_data,
+#'   aa_seq = "PEPTIDEK",
+#'   protein_mass = 910.45,
+#'   threshold = 0.85,
+#'   output_folder = "./results/run_1",
+#'   score = "cosine",
+#'   number_of_cores = 4,
+#'   ppm_tolerance = 15
+#' )
+#' }
 extract_isotopes <- function(full_mgf, aa_seq, protein_mass,
                              threshold, output_folder,
-                             score = c("cosine", "pearson", "NRMSE"), number_of_cores = 1,
+                             score = c("pearson", "cosine", "NRMSE"), number_of_cores = 1,
                              isotope_peaks_included = 3, cutoff = 0.05,
                              ppm_tolerance = 20, cosine_score_correction = 1,
-                             minimal_isotope_sequence = c(-2, -1, 0, 1, 2)) {
+                             minimal_isotope_sequence = c(-2, -1, 0, 1, 2),
+                             nrmse_cutoff = 0) {
 
   path_to_export <- create_output_folder(output_folder)
 
@@ -24,7 +80,8 @@ extract_isotopes <- function(full_mgf, aa_seq, protein_mass,
       minimal_isotope_sequence,
       score,
       cosine_score_correction,
-      threshold
+      threshold,
+      nrmse_cutoff
     )
   }else {
     the_results <- runner_sequential(
@@ -38,7 +95,8 @@ extract_isotopes <- function(full_mgf, aa_seq, protein_mass,
       minimal_isotope_sequence,
       score,
       cosine_score_correction,
-      threshold
+      threshold,
+      nrmse_cutoff
     )
   }
 
@@ -50,10 +108,10 @@ extract_isotopes <- function(full_mgf, aa_seq, protein_mass,
   founddf <- do.call(rbind, lapply(the_results, `[[`, "founddf"))
   nonefounddf <- do.call(rbind, lapply(the_results, `[[`, "nonefounddf"))
 
-  write.csv(founddf, paste0(path_to_export, "/matched_peaks.csv"),
+  utils::write.csv(founddf, paste0(path_to_export, "/matched_peaks.csv"),
             row.names = FALSE)
 
-  write.csv(nonefounddf, paste0(path_to_export, "/unmatched_peaks.csv"),
+  utils::write.csv(nonefounddf, paste0(path_to_export, "/unmatched_peaks.csv"),
             row.names = FALSE)
 
   return(list(founddf = founddf, nonefounddf = nonefounddf))
@@ -83,7 +141,8 @@ runner_parallel <- function(all_frames,
                             minimal_isotope_sequence,
                             score,
                             cosine_score_correction,
-                            threshold) {
+                            threshold,
+                            nrmse_cutoff) {
 
   # 1. Setup future plan
   future::plan(future::multisession, workers = number_of_cores)
@@ -120,6 +179,12 @@ runner_parallel <- function(all_frames,
         isotopes = isotopes_ref
       )
 
+      isotope_template_average_mass <- get_isotope_template(temp_spectrum,
+                                                            aa_seq,
+                                                            protein_mass,
+                                                            1000000,
+                                                            isotopes = isotopes_ref)
+
       while (inaction) {
         score_matrix <- vapply(temp_spectrum$mz, function(x) {
           isotopefit_opt_cpp(
@@ -142,20 +207,33 @@ runner_parallel <- function(all_frames,
           temp_spectrum$cor <- temp_spectrum$NRMSE
         }
 
-        if (max(temp_spectrum$cor, na.rm = TRUE) >= threshold) {
-          poi_val <- temp_spectrum$mz[which.max(temp_spectrum$cor)]
+        best_nrmse <- temp_spectrum$NRMSE[which.max(temp_spectrum$cor)]
+
+        #If the maximum score is higher than the set threshold
+        #Replot and substract the isotope fit
+        #Return the spectrum, p1, lineToAdd
+        if ((score %in% c("pearson", "cosine") & max(temp_spectrum$cor) >= threshold &
+             best_nrmse <= nrmse_cutoff) |
+            (score == "NRMSE" & min(temp_spectrum$cor) <= threshold)) {
+          if (score == "NRMSE") {
+            poi <- subset(temp_spectrum, cor == min(temp_spectrum$cor))$mz
+          } else {
+            poi <- subset(temp_spectrum, cor == max(temp_spectrum$cor))$mz
+          }
 
           temp <- substract_isotope_fit_opt(
             spectrum = temp_spectrum,
             isotope_template = isotope_template,
-            poi = poi_val,
+            poi = poi,
             ppm_tolerance = ppm_tolerance,
             slice = i,
             path_to_export = path_to_export,
             id = spectrum_id,
             score = score,
-            cosine_score_correction = cosine_score_correction,
-            slice_counter = slice_counter
+            cosine_score_correction =
+              cosine_score_correction,
+            slice_counter = slice_counter,
+            isotope_template_am = isotope_template_average_mass
           )
 
           slice_counter <- slice_counter + 1
@@ -167,27 +245,61 @@ runner_parallel <- function(all_frames,
           if (nrow(temp_spectrum) == 0) inaction <- FALSE
 
         } else {
-          inaction <- FALSE
+          inaction = FALSE
 
-          if (!isotopeidentified) {
-            best_match <- temp_spectrum[which.max(temp_spectrum$cor), ]
-            local_none_found_df <- rbind(local_none_found_df, best_match)
+          if (!isotopeidentified & score == "NRMSE") {
+            if (nrow(local_none_found_df) == 0) {
+              local_none_found_df <-
+                subset(
+                  temp_spectrum,
+                  cor == min(temp_spectrum$cor)
+                )[1, ]
+            }else {
+              local_none_found_df <-
+                rbind(
+                  local_none_found_df,
+                  subset(temp_spectrum, cor == min(temp_spectrum$cor))[1, ]
+                )
+            }
+          }else {
+            if (nrow(local_none_found_df) == 0) {
+              local_none_found_df <-
+                subset(
+                  temp_spectrum,
+                  cor == max(temp_spectrum$cor)
+                )[1, ]
+            }else {
+              local_none_found_df <-
+                rbind(
+                  local_none_found_df,
+                  subset(temp_spectrum, cor == max(temp_spectrum$cor))[1, ]
+                )
+            }
           }
 
-          p1 <- ggplot2::ggplot(temp_spectrum, ggplot2::aes(x = .data$mz, y = .data$intensity)) +
-            ggplot2::geom_bar(
-              ggplot2::aes(x = .data$mz, y = .data$centroided_intensity),
-              stat = "identity", width = 0.05, fill = "#444444"
+          p1 <-  ggplot(temp_spectrum,
+                        aes(x = .data$mz, y = .data$intensity)) +
+            geom_bar(
+              data = temp_spectrum,
+              aes(
+                x = .data$mz,
+                y = .data$centroided_intensity
+              ),
+              stat = "identity",
+              width = 0.05,
+              fill = "#444444"
             ) +
-            ggplot2::labs(
-              title = paste0("Slice ", i, " ; ", round(max(temp_spectrum$cor, na.rm = TRUE), 4)),
-              x = "m/z", y = "Intensity"
+            labs(
+              title = paste0(temp_spectrum$id[1], "; Slice ", i, " ; ", max(temp_spectrum$cor)),
+              x = "m/z",
+              y = "Intensity"
             ) +
-            ggplot2::theme_classic() +
-            ggplot2::scale_y_continuous(
-              expand = c(0, 0),
-              limits = c(0, max(temp_spectrum$intensity, 1) * 1.05)
-            )
+            theme_classic() +
+            theme(panel.grid = element_blank()) +
+            scale_y_continuous(expand = c(0, 0),
+                               limits =
+                                 c(0,
+                                   max(temp_spectrum$intensity) * 1.05))
 
           plot_path <- file.path(path_to_export, "separated_unmatched_spectra")
           if(!dir.exists(plot_path)) dir.create(plot_path, recursive = TRUE, showWarnings = FALSE)
@@ -203,7 +315,23 @@ runner_parallel <- function(all_frames,
     # Return local results to be combined by future_lapply
     return(list(founddf = local_found_df, nonefounddf = local_none_found_df))
 
-  }, future.seed = TRUE,
+  },
+  future.seed = TRUE,
+  future.globals = c(
+    "aa_seq",
+    "protein_mass",
+    "isotopes_ref",
+    "ppm_tolerance",
+    "cosine_score_correction",
+    "minimal_isotope_sequence",
+    "score",
+    "threshold",
+    "nrmse_cutoff",
+    "path_to_export",
+    "substract_isotope_fit_opt",
+    "get_isotope_template",
+    "isotopefit_opt_cpp"
+  ),
   future.packages = c("dplyr", "ggplot2", "tidyr", "enviPat", "IsotopeExtractor", "Rcpp"))
 
   return(results)
@@ -219,7 +347,8 @@ runner_sequential <- function(all_frames,
                            minimal_isotope_sequence,
                            score,
                            cosine_score_correction,
-                           threshold) {
+                           threshold,
+                           nrmse_cutoff) {
   message("Use  the number_of_cores argument to use multiple cores.
           It can take a while when using only one core.")
 
@@ -256,19 +385,13 @@ runner_sequential <- function(all_frames,
                                                  isotope_peaks_included,
                                                  isotopes = isotopes)
 
+        isotope_template_average_mass <- get_isotope_template(temp_spectrum,
+                                                 aa_seq,
+                                                 protein_mass,
+                                                 1000000,
+                                                 isotopes = isotopes)
+
         while (inaction) {
-          #Calculate correlation values
-          # temp_spectrum$cor <- sapply(temp_spectrum$mz, function(x) {
-          #   isotopefit_opt_cpp(
-          #     spectrum = temp_spectrum,
-          #     isotope_template = isotope_template,
-          #     poi = x,
-          #     ppm_tolerance = ppm_tolerance,
-          #     cosine_score_correction = cosine_score_correction,
-          #     minimal_isotope_sequence = minimal_isotope_sequence,
-          #     score = score
-          #   )
-          # })
           score_matrix <- vapply(temp_spectrum$mz, function(x) {
             isotopefit_opt_cpp(
               spectrum = temp_spectrum,
@@ -290,10 +413,13 @@ runner_sequential <- function(all_frames,
             temp_spectrum$cor <- temp_spectrum$NRMSE
           }
 
+          best_nrmse <- temp_spectrum$NRMSE[which.max(temp_spectrum$cor)]
+
           #If the maximum score is higher than the set threshold
           #Replot and substract the isotope fit
           #Return the spectrum, p1, lineToAdd
-          if ((score %in% c("pearson", "cosine") & max(temp_spectrum$cor) >= threshold) |
+          if ((score %in% c("pearson", "cosine") & max(temp_spectrum$cor) >= threshold &
+               best_nrmse <= nrmse_cutoff) |
               (score == "NRMSE" & min(temp_spectrum$cor) <= threshold)) {
             if (score == "NRMSE") {
               poi <- subset(temp_spectrum, cor == min(temp_spectrum$cor))$mz
@@ -312,7 +438,8 @@ runner_sequential <- function(all_frames,
               score = score,
               cosine_score_correction =
                 cosine_score_correction,
-              slice_counter = slice_counter
+              slice_counter = slice_counter,
+              isotope_template_am = isotope_template_average_mass
             )
 
             slice_counter = slice_counter + 1
@@ -376,7 +503,7 @@ runner_sequential <- function(all_frames,
                 fill = "#444444"
               ) +
               labs(
-                title = paste0("Slice ", i, " ; ", max(temp_spectrum$cor)),
+                title = paste0(temp_spectrum$id[1], "; Slice ", i, " ; ", max(temp_spectrum$cor)),
                 x = "m/z",
                 y = "Intensity"
               ) +
@@ -420,9 +547,10 @@ substract_isotope_fit_opt <- function(spectrum,
                                           path_to_export,
                                           id,
                                           score,
-                                          cosine,
+                                          #cosine,
                                           cosine_score_correction,
-                                          slice_counter) {
+                                          slice_counter,
+                                          isotope_template_am) {
   # --- Step 1: Align template and Scale (Matches C++ Step 1) ---
   # Find 100% peak for scaling (difint)
   #idx_100 <- which.min(abs(isotope_template$percent - 100))
@@ -437,9 +565,10 @@ substract_isotope_fit_opt <- function(spectrum,
   difint <- max_spectrum_intensity / intensity_at_100pct
   difmz <- poi - mz_at_max_temp
 
-  # Update template
+  # Update templates
   isotope_template$mz <- isotope_template$mz + difmz
   isotope_template$intensity <- isotope_template$intensity * difint
+  isotope_template_am$mz <- isotope_template_am$mz + difmz
 
   # --- Step 2: Nearest m/z search (Matches C++ std::lower_bound logic) ---
   # Vectorized approach to find the absolute closest peak
@@ -596,7 +725,7 @@ substract_isotope_fit_opt <- function(spectrum,
 
   line_to_add <- subset(spectrum, cor == max(spectrum$cor))
   line_to_add$averageMass <-
-    IsotopeExtractor:::calculate_average_mass(isotope_template, spectrum$charge[1])
+    IsotopeExtractor:::calculate_average_mass(isotope_template_am, spectrum$charge[1])
 
   spectrum$centroided_intensity <-
     spectrum$centroided_intensity - spectrum$intensity_isotope

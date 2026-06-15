@@ -3,7 +3,7 @@ plot_spectra <- function(full_mgf, output_folder) {
                                     winslash = "/", mustWork = FALSE),
                       "all_spectra_plot.pdf", sep = "/")
 
-  pdf(outputfile, width = 6, height = 6)
+  grDevices::pdf(outputfile, width = 6, height = 6)
 
   for (i in unique(full_mgf$id)){
     tempdf <- full_mgf |>
@@ -67,5 +67,5 @@ plot_spectra <- function(full_mgf, output_folder) {
     print(p)
   }
 
-  dev.off()
+  grDevices::dev.off()
 }

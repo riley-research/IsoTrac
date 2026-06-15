@@ -1,5 +1,60 @@
+#' Calculate False Discovery Rate (FDR) Score Threshold
+#'
+#' Evaluates isotope pattern match scores for both target and decoy (FDR) spectra
+#' groups against a predicted molecular formula template. It calculates target and
+#' decoy similarity scores using single-core processing or a parallelized
+#' future backend, estimates q-values using a target-decoy approach,
+#' determines the empirical score cutoff corresponding to a target FDR, and optionally
+#' plots the score distributions.
+#'
+#' @param full_mgf \code{data.frame}. The data imported using the \code{\link{import_spectra}}
+#' function.
+#' @param full_fdr_mgf \code{data.frame}. The processed decoy spectra data frame, typically
+#'   generated via \code{generate_fdr_spectra}.
+#' @param aa_seq \code{character}. The primary amino acid sequence of the target protein backbone.
+#' @param protein_mass \code{numeric}. Average mass of the bare protein backbone to
+#'   deduce potential glycan additions.
+#' @param score \code{character}. Similarity metric to calculate. Must be one of
+#'   \code{"cosine"}, \code{"pearson"}, or \code{"NRMSE"} (Normalized Root Mean Square Error).
+#'   Default is \code{"pearson"}.
+#' @param number_of_cores \code{integer}. Number of parallel workers to allocate for
+#'   processing spectra lists via \code{future.apply}. Default is \code{1}.
+#' @param isotope_peaks_included \code{integer}. Number of isotropic peaks flanking the major
+#'   monoisotopic peak to track inside the verification window. Default is \code{3}.
+#' @param cutoff \code{numeric}. The False Discovery Rate constraint limit (e.g., \code{0.01}
+#'   for a 1\\% FDR cutoff threshold). Default is \code{0.01}.
+#' @param ppm_tolerance \code{numeric}. Mass accuracy window limit in parts-per-million
+#'   applied when matching experimental m/z coordinates to template patterns. Default is \code{20}.
+#' @param cosine_score_correction \code{numeric}. Intensity multiplier offset constant applied
+#'   during manual cosine similarity logic computations. Default is \code{1}.
+#' @param minimal_isotope_sequence \code{numeric vector}. Continuous isotope index steps relative
+#'   to the base profile required to validate and trim isotope fit profiles. Default is \code{c(-2, -1, 0, 1, 2)}.
+#' @param show_plot \code{logical}. If \code{TRUE}, prints a line plot comparing target and decoy score
+#'   binned counts alongside the derived threshold boundary. Default is \code{TRUE}.
+#' @param plot_bins \code{numeric}. Bin width size used to cluster matching score counts inside the target-decoy visual plot. Default is \code{0.006}.
+#'
+#' @return \code{numeric}. The calculated score threshold value corresponding to the exact
+#'   target FDR allocation parameter restriction.
+#'
+#' @seealso \code{\link{generate_fdr_spectra}}, \code{\link{import_spectra}}
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Standard wrapper calculation at 1% FDR using 4 parallel processing cores:
+#' fdr_cutoff <- get_fdr_threshold(
+#'   full_mgf = target_spectra,
+#'   full_fdr_mgf = decoy_spectra,
+#'   aa_seq = "PEPTIDEK",
+#'   protein_mass = 910.45,
+#'   score = "pearson",
+#'   number_of_cores = 4,
+#'   cutoff = 0.01
+#' )
+#' }
 get_fdr_threshold <- function(full_mgf, full_fdr_mgf, aa_seq, protein_mass,
-                              score = c("cosine", "pearson", "NRMSE"), number_of_cores = 1,
+                              score = c("pearson", "cosine", "NRMSE"), number_of_cores = 1,
                               isotope_peaks_included = 3, cutoff = 0.01,
                               ppm_tolerance = 20, cosine_score_correction = 1,
                               minimal_isotope_sequence = c(-2, -1, 0, 1, 2),
@@ -367,11 +422,11 @@ get_isotope_template <- function(spectrum, aa_seq, protein_mass,
     mz_seen <- append(mz_seen, tempdf$mz)
 
     if (nrow(cleandf) == 0) {
-      cleandf <- data.frame(mz = weighted.mean(tempdf$mz, tempdf$intensity),
+      cleandf <- data.frame(mz = stats::weighted.mean(tempdf$mz, tempdf$intensity),
                             intensity = sum(tempdf$intensity, na.rm = TRUE))
     }else {
       cleandf <- rbind(cleandf, data.frame(
-        mz = weighted.mean(tempdf$mz, tempdf$intensity),
+        mz = stats::weighted.mean(tempdf$mz, tempdf$intensity),
         intensity = sum(tempdf$intensity, na.rm = TRUE)
       ))
     }
@@ -401,7 +456,7 @@ get_isotope_template <- function(spectrum, aa_seq, protein_mass,
 
       # 4. Store result
       results_list[[counter]] <- data.frame(
-        mz = weighted.mean(tempdf$mz, tempdf$intensity, na.rm = TRUE),
+        mz = stats::weighted.mean(tempdf$mz, tempdf$intensity, na.rm = TRUE),
         intensity = sum(tempdf$intensity, na.rm = TRUE)
       )
 
@@ -425,7 +480,7 @@ get_isotope_template <- function(spectrum, aa_seq, protein_mass,
   cleandf <- cleandf |>
     dplyr::arrange(.data$mz)
 
-  cleandf <- cleandf[complete.cases(cleandf), ]
+  cleandf <- cleandf[stats::complete.cases(cleandf), ]
 
   cleandf$percent <- as.numeric(cleandf$intensity /
                                   max(cleandf$intensity) * 100)
@@ -621,7 +676,7 @@ isotopefit_opt <- function(spectrum, isotope_template, poi,
 
   if (length(final_temp) >= 5) {
     if (score == "pearson") {
-      fit <- cor(final_temp, final_spec)
+      fit <- stats::cor(final_temp, final_spec)
     } else if (score == "cosine") {
       # Use manual manual calculation to match C++ exactly
       min_val <- min(c(final_temp, final_spec))
@@ -724,7 +779,7 @@ isotopefit_opt_old <- function(spectrum, isotope_template, poi,
   fit <- 0
   if (length(isotope_template$intensity) >= 5) {
     if (score == "pearson") {
-      fit <- cor(isotope_template$intensity,
+      fit <- sats::cor(isotope_template$intensity,
                  isotope_template$centroided_intensity)
       plot_title <- paste0("Pearson correlation coefficient: ", fit)
     }else if (score == "cosine") {

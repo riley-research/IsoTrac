@@ -1,3 +1,45 @@
+#' Import and Process Mass Spectrometry Spectra
+#'
+#' @description
+#' Reads a comma-separated text file (representing MGF spectral data), as generated
+#' by PTsliCR, with the columns mz, intensity, id, peakgroup. The importer  applies optional scan
+#' range filtering, filters out low-intensity signals, segments data into distinct mass-to-charge
+#' (m/z) separation slices, performs profile-to-centroid peak detection using spline interpolation,
+#' determines charge states based on delta m/z differences, and estimates the intact mass.
+#'
+#' @param mgf_path \code{character}. Path to the comma-separated text file containing the spectrum data.
+#' @param intensity_threshold \code{numeric}. Minimum intensity threshold. Peaks falling
+#' completely below this threshold are filtered out.
+#' @param charge_range \code{integer vector}. A vector of valid expected charge states to evaluate
+#' (e.g., \code{1:5}).
+#' @param separation_threshold \code{numeric}. The minimal difference in m/z required to split
+#' spectral peaks into a new sequential slice. Default is \code{20}.
+#' @param min_peaks_per_slice \code{integer}. Minimum number of peaks required within a
+#' slice to keep it. Default is \code{6}.
+#' @param min_charge_percentage_matched \code{numeric}. The minimum proportion of sequential peak differences
+#' that must match a charge state's calculated delta for the assignment to be retained. Default is \code{0.2}.
+#' @param scan_range \code{numeric vector}. A vector of length 2 indicating the minimum and maximum
+#' \code{spectrum_nr} to keep. Use \code{c(0, 0)} to skip filtering. Default is \code{c(0, 0)}.
+#'
+#' @return A \code{data.frame} (or tibble) containing the processed spectrum data, including calculated
+#' centroids, assigned charge states, peak counts, slice segmentation, and the estimated intact mass
+#' (\code{estimated_intact_mass}).
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Example workflow usage:
+#' processed_data <- import_spectra(
+#'   mgf_path = "path/to/data.csv",
+#'   intensity_threshold = 1000,
+#'   charge_range = 1:4,
+#'   separation_threshold = 20,
+#'   min_peaks_per_slice = 5,
+#'   min_charge_percentage_matched = 0.25,
+#'   scan_range = c(100, 500)
+#' )
+#' }
 import_spectra <- function(mgf_path, intensity_threshold, charge_range,
                            separation_threshold = 20, min_peaks_per_slice = 6,
                            min_charge_percentage_matched = 0.2,
