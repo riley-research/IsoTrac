@@ -1,4 +1,4 @@
 ## usethis namespace: start
-#' @useDynLib IsotopeExtractor, .registration = TRUE
+#' @useDynLib IsoTrac, .registration = TRUE
 ## usethis namespace: end
 NULL

@@ -216,9 +216,9 @@ runner_parallel <- function(all_frames,
              best_nrmse <= nrmse_cutoff) |
             (score == "NRMSE" & min(temp_spectrum$cor) <= threshold)) {
           if (score == "NRMSE") {
-            poi <- subset(temp_spectrum, cor == min(temp_spectrum$cor))$mz
+            poi <- temp_spectrum$mz[temp_spectrum$cor == min(temp_spectrum$cor, na.rm = TRUE)]
           } else {
-            poi <- subset(temp_spectrum, cor == max(temp_spectrum$cor))$mz
+            poi <- temp_spectrum$mz[temp_spectrum$cor == max(temp_spectrum$cor, na.rm = TRUE)]
           }
 
           temp <- substract_isotope_fit_opt(
@@ -249,39 +249,29 @@ runner_parallel <- function(all_frames,
 
           if (!isotopeidentified & score == "NRMSE") {
             if (nrow(local_none_found_df) == 0) {
-              local_none_found_df <-
-                subset(
-                  temp_spectrum,
-                  cor == min(temp_spectrum$cor)
-                )[1, ]
-            }else {
-              local_none_found_df <-
-                rbind(
-                  local_none_found_df,
-                  subset(temp_spectrum, cor == min(temp_spectrum$cor))[1, ]
-                )
+              local_none_found_df <- temp_spectrum[which(temp_spectrum$cor == min(temp_spectrum$cor, na.rm = TRUE))[1], ]
+            } else {
+              local_none_found_df <- rbind(
+                local_none_found_df,
+                temp_spectrum[which(temp_spectrum$cor == min(temp_spectrum$cor, na.rm = TRUE))[1], ]
+              )
             }
-          }else {
+          } else {
             if (nrow(local_none_found_df) == 0) {
-              local_none_found_df <-
-                subset(
-                  temp_spectrum,
-                  cor == max(temp_spectrum$cor)
-                )[1, ]
-            }else {
-              local_none_found_df <-
-                rbind(
-                  local_none_found_df,
-                  subset(temp_spectrum, cor == max(temp_spectrum$cor))[1, ]
-                )
+              local_none_found_df <- temp_spectrum[which(temp_spectrum$cor == max(temp_spectrum$cor, na.rm = TRUE))[1], ]
+            } else {
+              local_none_found_df <- rbind(
+                local_none_found_df,
+                temp_spectrum[which(temp_spectrum$cor == max(temp_spectrum$cor, na.rm = TRUE))[1], ]
+              )
             }
           }
 
-          p1 <-  ggplot(temp_spectrum,
-                        aes(x = .data$mz, y = .data$intensity)) +
-            geom_bar(
+          p1 <-  ggplot2::ggplot(temp_spectrum,
+                                 ggplot2::aes(x = .data$mz, y = .data$intensity)) +
+            ggplot2::geom_bar(
               data = temp_spectrum,
-              aes(
+              ggplot2::aes(
                 x = .data$mz,
                 y = .data$centroided_intensity
               ),
@@ -289,14 +279,14 @@ runner_parallel <- function(all_frames,
               width = 0.05,
               fill = "#444444"
             ) +
-            labs(
+            ggplot2::labs(
               title = paste0(temp_spectrum$id[1], "; Slice ", i, " ; ", max(temp_spectrum$cor)),
               x = "m/z",
               y = "Intensity"
             ) +
-            theme_classic() +
-            theme(panel.grid = element_blank()) +
-            scale_y_continuous(expand = c(0, 0),
+            ggplot2::theme_classic() +
+            ggplot2::theme(panel.grid = ggplot2::element_blank()) +
+            ggplot2::scale_y_continuous(expand = c(0, 0),
                                limits =
                                  c(0,
                                    max(temp_spectrum$intensity) * 1.05))
@@ -353,6 +343,8 @@ runner_sequential <- function(all_frames,
           It can take a while when using only one core.")
 
   isotopes <- get("isotopes", envir = asNamespace("enviPat"))
+
+  frame <- NULL
 
   results <- {
     foreach::foreach(
@@ -422,9 +414,9 @@ runner_sequential <- function(all_frames,
                best_nrmse <= nrmse_cutoff) |
               (score == "NRMSE" & min(temp_spectrum$cor) <= threshold)) {
             if (score == "NRMSE") {
-              poi <- subset(temp_spectrum, cor == min(temp_spectrum$cor))$mz
+              poi <- temp_spectrum$mz[temp_spectrum$cor == min(temp_spectrum$cor, na.rm = TRUE)]
             } else {
-              poi <- subset(temp_spectrum, cor == max(temp_spectrum$cor))$mz
+              poi <- temp_spectrum$mz[temp_spectrum$cor == max(temp_spectrum$cor, na.rm = TRUE)]
             }
 
             temp <- substract_isotope_fit_opt(
@@ -462,39 +454,29 @@ runner_sequential <- function(all_frames,
 
             if (!isotopeidentified & score == "NRMSE") {
               if (nrow(local_none_found_df) == 0) {
-                local_none_found_df <-
-                  subset(
-                    temp_spectrum,
-                    cor == min(temp_spectrum$cor)
-                  )[1, ]
-              }else {
-                local_none_found_df <-
-                  rbind(
-                    local_none_found_df,
-                    subset(temp_spectrum, cor == min(temp_spectrum$cor))[1, ]
-                  )
+                local_none_found_df <- temp_spectrum[which(temp_spectrum$cor == min(temp_spectrum$cor, na.rm = TRUE))[1], ]
+              } else {
+                local_none_found_df <- rbind(
+                  local_none_found_df,
+                  temp_spectrum[which(temp_spectrum$cor == min(temp_spectrum$cor, na.rm = TRUE))[1], ]
+                )
               }
-            }else {
+            } else {
               if (nrow(local_none_found_df) == 0) {
-                local_none_found_df <-
-                  subset(
-                    temp_spectrum,
-                    cor == max(temp_spectrum$cor)
-                  )[1, ]
-              }else {
-                local_none_found_df <-
-                  rbind(
-                    local_none_found_df,
-                    subset(temp_spectrum, cor == max(temp_spectrum$cor))[1, ]
-                  )
+                local_none_found_df <- temp_spectrum[which(temp_spectrum$cor == max(temp_spectrum$cor, na.rm = TRUE))[1], ]
+              } else {
+                local_none_found_df <- rbind(
+                  local_none_found_df,
+                  temp_spectrum[which(temp_spectrum$cor == max(temp_spectrum$cor, na.rm = TRUE))[1], ]
+                )
               }
             }
 
-            p1 <-  ggplot(temp_spectrum,
-                          aes(x = .data$mz, y = .data$intensity)) +
-              geom_bar(
+            p1 <-  ggplot2::ggplot(temp_spectrum,
+                                   ggplot2::aes(x = .data$mz, y = .data$intensity)) +
+              ggplot2::geom_bar(
                 data = temp_spectrum,
-                aes(
+                ggplot2::aes(
                   x = .data$mz,
                   y = .data$centroided_intensity
                 ),
@@ -502,19 +484,19 @@ runner_sequential <- function(all_frames,
                 width = 0.05,
                 fill = "#444444"
               ) +
-              labs(
+              ggplot2::labs(
                 title = paste0(temp_spectrum$id[1], "; Slice ", i, " ; ", max(temp_spectrum$cor)),
                 x = "m/z",
                 y = "Intensity"
               ) +
-              theme_classic() +
-              theme(panel.grid = element_blank()) +
-              scale_y_continuous(expand = c(0, 0),
+              ggplot2::theme_classic() +
+              ggplot2::theme(panel.grid = ggplot2::element_blank()) +
+              ggplot2::scale_y_continuous(expand = c(0, 0),
                                  limits =
                                    c(0,
                                      max(temp_spectrum$intensity) * 1.05))
 
-            invisible(suppressMessages(ggsave(
+            invisible(suppressMessages(ggplot2::ggsave(
               paste0(
                 path_to_export,
                 "/separated_unmatched_spectra/",
@@ -631,7 +613,7 @@ substract_isotope_fit_opt <- function(spectrum,
 
   if (length(final_temp) >= 5) {
     if (score == "pearson") {
-      fit <- cor(final_temp, final_spec)
+      fit <- stats::cor(final_temp, final_spec)
     } else if (score == "cosine") {
       # Use manual manual calculation to match C++ exactly
       min_val <- min(c(final_temp, final_spec))
@@ -699,7 +681,7 @@ substract_isotope_fit_opt <- function(spectrum,
                                 limits = c(0, max(spectrum$intensity) *
                                              1.05))
 
-  invisible(suppressMessages(ggsave(
+  invisible(suppressMessages(ggplot2::ggsave(
     paste0(
       path_to_export,
       "/separated_matched_spectra/",
@@ -718,190 +700,15 @@ substract_isotope_fit_opt <- function(spectrum,
   spectrum <- isotope_template |>
     dplyr::select("spectrum_mz", "intensity") |>
     dplyr::rename("mz" = "spectrum_mz", "intensity_isotope" = "intensity") |>
-    dplyr::right_join(spectrum, join_by("mz")) |>
+    dplyr::right_join(spectrum, dplyr::join_by("mz")) |>
     dplyr::arrange(.data$mz)
 
   spectrum$intensity_isotope[is.na(spectrum$intensity_isotope)] <- 0
 
-  line_to_add <- subset(spectrum, cor == max(spectrum$cor))
+  line_to_add <- spectrum[which(spectrum$cor == max(spectrum$cor, na.rm = TRUE)), ]
   line_to_add$averageMass <-
-    IsotopeExtractor:::calculate_average_mass(isotope_template_am, spectrum$charge[1])
-
-  spectrum$centroided_intensity <-
-    spectrum$centroided_intensity - spectrum$intensity_isotope
-
-  spectrum <- spectrum |>
-    dplyr::select(-c("intensity_isotope", "cor")) |>
-    dplyr::filter(.data$centroided_intensity > 0)
-
-  list(spectrum, line_to_add)
-}
-
-substract_isotope_fit_opt_old <- function(spectrum,
-                                      isotope_template,
-                                      poi,
-                                      slice,
-                                      ppm_tolerance,
-                                      path_to_export,
-                                      id,
-                                      score,
-                                      cosine,
-                                      cosine_score_correction,
-                                      slice_counter) {
-  # --- Step 1: Align template to poi ---
-  max_intensity_row <- isotope_template |>
-    dplyr::filter(.data$intensity == max(.data$intensity)) |>
-    dplyr::slice(1)
-  difmz <- poi - max_intensity_row$mz
-  isotope_template$mz <- isotope_template$mz + difmz
-
-  # Scale intensities
-  max_spectrum_intensity <-
-    max(spectrum$centroided_intensity[spectrum$mz == poi], na.rm = TRUE)
-  difint <- max_spectrum_intensity /
-    isotope_template$intensity[isotope_template$percent == 100][1]
-  isotope_template$intensity <- isotope_template$intensity * difint
-
-  # --- Step 2: Vectorized nearest m/z search ---
-  # This replaces sapply(...) with fast vectorized approximation
-  spectrum_mz <- spectrum$mz
-  template_mz <- isotope_template$mz
-
-  # For each template mz, find closest spectrum mz
-  idx <- tryCatch({
-    findInterval(template_mz, spectrum_mz)
-  }, error = function(e) {
-    message(
-      "Error in findInterval with template_mz length: ",
-      length(template_mz),
-      ", spectrum_mz length: ",
-      length(spectrum_mz),
-      " -> ",
-      e$message
-    )
-    NA
-  })
-  idx[idx == 0] <- 1
-  idx[idx > length(spectrum_mz)] <- length(spectrum_mz)
-
-  # Choose the closer of idx and idx+1
-  closest <- ifelse(
-    idx < length(spectrum_mz) &
-      abs(spectrum_mz[idx + 1] - template_mz) <
-        abs(spectrum_mz[idx] - template_mz),
-    idx + 1,
-    idx
-  )
-
-  isotope_template$spectrum_mz <- spectrum_mz[closest]
-  isotope_template$centroided_intensity <-
-    spectrum$centroided_intensity[closest]
-  isotope_template$ppmError <- (isotope_template$mz -
-                                  isotope_template$spectrum_mz) /
-    isotope_template$spectrum_mz * 1e6
-
-  # --- Step 3: Filter by ppm_tolerance ---
-  isotope_template <-
-    isotope_template[abs(isotope_template$ppmError) <= ppm_tolerance, ]
-
-  # --- Step 4: Trim missing isotopeSeq without loops ---
-  existing_seq <- isotope_template$isotope_seq
-
-  # Trim front
-  trim_front <- min(existing_seq):max(existing_seq)
-  first_missing <- trim_front[!trim_front %in% existing_seq][1]
-  if (!is.na(first_missing)) {
-    isotope_template <-
-      isotope_template[isotope_template$isotope_seq < first_missing, ]
-  }
-  # Trim back
-  trim_back <- max(existing_seq):min(existing_seq)
-  last_missing <- trim_back[!trim_back %in% existing_seq][1]
-
-  if (!is.na(last_missing)) {
-    isotope_template <-
-      isotope_template[isotope_template$isotope_seq > last_missing, ]
-  }
-
-  # --- Step 5: Compute fit ---
-  fit <- 0
-  if (length(isotope_template$intensity) >= 5) {
-    if (score == "pearson") {
-      fit <- cor(isotope_template$intensity,
-                 isotope_template$centroided_intensity)
-    } else if (score == "cosine") {
-      template_intensity <- isotope_template$intensity
-      isotope_intensity <- isotope_template$centroided_intensity
-      offset <- min(template_intensity, isotope_intensity, na.rm = TRUE) *
-        cosine_score_correction
-      template_intensity <- template_intensity - offset
-      isotope_intensity <- isotope_intensity - offset
-      fit <- lsa::cosine(template_intensity, isotope_intensity)[[1]]
-    }
-  } else {
-    stop("score type unkown")
-  }
-
-  p1 <- ggplot2::ggplot() +
-    ggplot2::geom_bar(
-      data = spectrum,
-      ggplot2::aes(x = .data$mz, y = .data$centroided_intensity),
-      stat = "identity",
-      fill = "#808080",
-      alpha = 1,
-      width = 0.05,
-      position = "identity"
-    ) +
-    ggplot2::geom_bar(
-      data = isotope_template,
-      ggplot2::aes(x = .data$mz, y = .data$intensity),
-      stat = "identity",
-      fill = "#840032",
-      alpha = 0.5,
-      width = 0.05,
-      position = "identity"
-    ) +
-    ggplot2::labs(title =
-                    paste0(
-                      id, "; Slice ", slice, "-", slice_counter, " ; ", fit),
-                  x = "m/z",
-                  y = "Intensity") +
-    ggplot2::theme_classic() +
-    ggplot2::theme(
-      panel.grid = ggplot2::element_blank(),
-      plot.title = ggplot2::element_text(hjust = 0.5)
-    ) +
-    ggplot2::scale_y_continuous(expand = c(0, 0),
-                                limits = c(0, max(spectrum$intensity) *
-                                             1.05))
-
-  invisible(suppressMessages(ggsave(
-    paste0(
-      path_to_export,
-      "/separated_matched_spectra/",
-      id,
-      "_",
-      slice,
-      "_",
-      slice_counter,
-      ".pdf"
-    ),
-    plot = p1,
-    width = 5,
-    height = 5
-  )))
-
-  spectrum <- isotope_template |>
-    dplyr::select("spectrum_mz", "intensity") |>
-    dplyr::rename("mz" = "spectrum_mz", "intensity_isotope" = "intensity") |>
-    dplyr::right_join(spectrum, join_by("mz")) |>
-    dplyr::arrange(.data$mz)
-
-  spectrum$intensity_isotope[is.na(spectrum$intensity_isotope)] <- 0
-
-  line_to_add <- subset(spectrum, cor == max(spectrum$cor))
-  line_to_add$averageMass <-
-    IsotopeExtractor:::calculate_average_mass(isotope_template, spectrum$charge[1])
+    calculate_average_mass(isotope_template_am, spectrum$charge[1])
+  #####
 
   spectrum$centroided_intensity <-
     spectrum$centroided_intensity - spectrum$intensity_isotope

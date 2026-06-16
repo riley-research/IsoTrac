@@ -75,7 +75,7 @@ supervised_intensity <- function(intensities, isotope_peaks_included) {
     # Ensure numerical stability (bounds can't cross)
     if (lower_bound > upper_bound) lower_bound <- upper_bound - 1e-10
 
-    new_i[i] <- runif(1, lower_bound, upper_bound)
+    new_i[i] <- stats::runif(1, lower_bound, upper_bound)
   }
 
   # for (i in seq_len(n)) {

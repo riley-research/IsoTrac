@@ -164,7 +164,8 @@ return_max_cor_scores_parallel_cpp <- function(spectrum,
     )
 
     cor_vec <- vapply(temp_spectrum$mz, function(x) {
-      IsotopeExtractor:::isotopefit_opt_cpp(
+      # IsotopeExtractor:::isotopefit_opt_cpp(
+      isotopefit_opt_cpp(
         spectrum = temp_spectrum,
         isotope_template = isotope_template,
         poi = x,
@@ -179,121 +180,66 @@ return_max_cor_scores_parallel_cpp <- function(spectrum,
 
     return(if(is.infinite(res)) 0.0 else res)
 
-  }, future.seed = TRUE, future.packages = c("IsotopeExtractor", "enviPat", "Rcpp"))
+  }, future.seed = TRUE, future.packages = c("IsoTrac", "enviPat", "Rcpp"))
 
   # Return as a combined vector
   return(unlist(max_vec))
 }
-
-return_max_cor_scores_parallel_cpp_old <- function(spectrum,
-                                           aa_seq,
-                                           protein_mass,
-                                           isotope_peaks_included,
-                                           ppm_tolerance,
-                                           cosine_score_correction,
-                                           minimal_isotope_sequence,
-                                           score,
-                                           number_of_cores) {
-
-  cl <- parallel::makeCluster(number_of_cores, outfile = "Z:/Tim/26-02-23_eqQ/EpCAM/EpCAM_DIA-PTCR_2800-3350_20260217172110/Analysis/cpp.log")
-  doParallel::registerDoParallel(cl)
-
-  spectrum_list <- split(spectrum, list(spectrum$id, spectrum$slice),
-                         drop = TRUE)
-
-  isotopes <- get("isotopes", envir = asNamespace("enviPat"))
-
-  max_vec <- foreach::foreach(
-    temp_spectrum = spectrum_list,
-    .packages = c("dplyr", "ggplot2", "tidyr", "enviPat", "IsotopeExtractor"),
-    .export = c(
-      "get_isotope_template",
-      "isotopefit_opt_cpp",
-      "amino_acid_composition"
-    ),
-    .combine = c
-  ) %dopar% {
-    isotope_template <- get_isotope_template(temp_spectrum,
-                                             aa_seq,
-                                             protein_mass,
-                                             isotope_peaks_included,
-                                             isotopes = isotopes)
-
-    cor_vec <- vapply(temp_spectrum$mz, function(x) {
-      isotopefit_opt_cpp(
-        spectrum = temp_spectrum,
-        isotope_template = isotope_template,
-        poi = x,
-        ppm_tolerance,
-        cosine_score_correction,
-        minimal_isotope_sequence,
-        score
-      )
-    }, numeric(1))
-
-    max(cor_vec, na.rm = TRUE)
-
-  }
-
-  parallel::stopCluster(cl)
-
-  max_vec
-}
-
-return_max_cor_scores_parallel <- function(spectrum,
-                                           aa_seq,
-                                           protein_mass,
-                                           isotope_peaks_included,
-                                           ppm_tolerance,
-                                           cosine_score_correction,
-                                           minimal_isotope_sequence,
-                                           score,
-                                           number_of_cores) {
-
-  cl <- parallel::makeCluster(number_of_cores)
-  doParallel::registerDoParallel(cl)
-
-  spectrum_list <- split(spectrum, list(spectrum$id, spectrum$slice),
-                         drop = TRUE)
-
-  isotopes <- get("isotopes", envir = asNamespace("enviPat"))
-
-  max_vec <- foreach::foreach(
-    temp_spectrum = spectrum_list,
-    .packages = c("dplyr", "ggplot2", "tidyr", "enviPat", "IsotopeExtractor"),
-    .export = c(
-      "get_isotope_template",
-      "isotopefit_opt",
-      "amino_acid_composition"
-    ),
-    .combine = c
-  ) %dopar% {
-    isotope_template <- get_isotope_template(temp_spectrum,
-                                             aa_seq,
-                                             protein_mass,
-                                             isotope_peaks_included,
-                                             isotopes = isotopes)
-
-    cor_vec <- vapply(temp_spectrum$mz, function(x) {
-      isotopefit_opt(
-        spectrum = temp_spectrum,
-        isotope_template = isotope_template,
-        poi = x,
-        ppm_tolerance,
-        cosine_score_correction,
-        minimal_isotope_sequence,
-        score
-      )
-    }, numeric(1))
-
-    max(cor_vec, na.rm = TRUE)
-
-  }
-
-  parallel::stopCluster(cl)
-
-  max_vec
-}
+#
+# return_max_cor_scores_parallel <- function(spectrum,
+#                                            aa_seq,
+#                                            protein_mass,
+#                                            isotope_peaks_included,
+#                                            ppm_tolerance,
+#                                            cosine_score_correction,
+#                                            minimal_isotope_sequence,
+#                                            score,
+#                                            number_of_cores) {
+#
+#   cl <- parallel::makeCluster(number_of_cores)
+#   doParallel::registerDoParallel(cl)
+#
+#   spectrum_list <- split(spectrum, list(spectrum$id, spectrum$slice),
+#                          drop = TRUE)
+#
+#   isotopes <- get("isotopes", envir = asNamespace("enviPat"))
+#
+#   max_vec <- foreach::foreach(
+#     temp_spectrum = spectrum_list,
+#     .packages = c("dplyr", "ggplot2", "tidyr", "enviPat", "IsotopeExtractor"),
+#     .export = c(
+#       "get_isotope_template",
+#       "isotopefit_opt",
+#       "amino_acid_composition"
+#     ),
+#     .combine = c
+#   ) %dopar% {
+#     isotope_template <- get_isotope_template(temp_spectrum,
+#                                              aa_seq,
+#                                              protein_mass,
+#                                              isotope_peaks_included,
+#                                              isotopes = isotopes)
+#
+#     cor_vec <- vapply(temp_spectrum$mz, function(x) {
+#       isotopefit_opt(
+#         spectrum = temp_spectrum,
+#         isotope_template = isotope_template,
+#         poi = x,
+#         ppm_tolerance,
+#         cosine_score_correction,
+#         minimal_isotope_sequence,
+#         score
+#       )
+#     }, numeric(1))
+#
+#     max(cor_vec, na.rm = TRUE)
+#
+#   }
+#
+#   parallel::stopCluster(cl)
+#
+#   max_vec
+# }
 
 return_max_cor_scores <- function(spectrum, aa_seq, protein_mass,
                                   isotope_peaks_included, ppm_tolerance,
@@ -374,7 +320,8 @@ return_max_cor_scores_cpp <- function(spectrum, aa_seq, protein_mass,
 
 get_isotope_template <- function(spectrum, aa_seq, protein_mass,
                                  isotope_peaks_included, isotopes = FALSE) {
-  aa_comp <- IsotopeExtractor:::amino_acid_composition(sequence = aa_seq)
+  # aa_comp <- IsotopeExtractor:::amino_acid_composition(sequence = aa_seq)
+  aa_comp <- amino_acid_composition(sequence = aa_seq)
 
   if (spectrum$estimated_intact_mass[1] > protein_mass) {
     glycan_comp <- add_glycan(spectrum$estimated_intact_mass[1] - protein_mass)
@@ -693,146 +640,6 @@ isotopefit_opt <- function(spectrum, isotope_template, poi,
   }
 
   return(fit)
-}
-
-isotopefit_opt_old <- function(spectrum, isotope_template, poi,
-                           ppm_tolerance, cosine_score_correction,
-                           minimal_isotope_sequence, score, plot = FALSE) {
-  # --- Step 1: Align template to poi ---
-  max_intensity_row <- isotope_template |>
-    dplyr::filter(.data$intensity == max(.data$intensity)) |>
-    dplyr::slice(1)
-  difmz <- poi - max_intensity_row$mz
-  isotope_template$mz <- isotope_template$mz + difmz
-
-  # Scale intensities
-  max_spectrum_intensity <-
-    max(spectrum$centroided_intensity[spectrum$mz == poi], na.rm = TRUE)
-  difint <- max_spectrum_intensity /
-    isotope_template$intensity[isotope_template$percent == 100][1]
-  isotope_template$intensity <- isotope_template$intensity * difint
-
-  # --- Step 2: Vectorized nearest m/z search ---
-  # This replaces sapply(...) with fast vectorized approximation
-  spectrum_mz <- spectrum$mz
-  template_mz <- isotope_template$mz
-
-  # For each template mz, find closest spectrum mz
-  idx <- tryCatch(
-    {
-      findInterval(template_mz, spectrum_mz)
-    },
-    error = function(e) {
-      message("Error in findInterval with template_mz length: ",
-              length(template_mz),
-              ", spectrum_mz length: ", length(spectrum_mz),
-              " -> ", e$message)
-      NA
-    }
-  )
-  idx[idx == 0] <- 1
-  idx[idx > length(spectrum_mz)] <- length(spectrum_mz)
-
-  # Choose the closer of idx and idx+1
-  closest <- ifelse(
-    idx < length(spectrum_mz) & abs(spectrum_mz[idx + 1] - template_mz) <
-      abs(spectrum_mz[idx] - template_mz),
-    idx + 1, idx
-  )
-
-  isotope_template$spectrum_mz <- spectrum_mz[closest]
-  isotope_template$centroided_intensity <-
-    spectrum$centroided_intensity[closest]
-  isotope_template$ppmError <- (isotope_template$mz -
-                                  isotope_template$spectrum_mz) /
-    isotope_template$spectrum_mz * 1e6
-
-  # --- Step 3: Filter by ppm_tolerance ---
-  isotope_template <-
-    isotope_template[abs(isotope_template$ppmError) <= ppm_tolerance, ]
-
-  # --- Step 4: Trim missing isotopeSeq without loops ---
-  existing_seq <- isotope_template$isotope_seq
-
-  #Return 0 if no minimal isotope sequence
-  if (!all(minimal_isotope_sequence %in% existing_seq)) {
-    return(0)
-  }
-
-  # Trim front
-  trim_front <- min(existing_seq):max(existing_seq)
-  first_missing <- trim_front[!trim_front %in% existing_seq][1]
-  if (!is.na(first_missing)) {
-    isotope_template <-
-      isotope_template[isotope_template$isotope_seq < first_missing, ]
-  }
-  # Trim back
-  trim_back <- max(existing_seq):min(existing_seq)
-  last_missing <- trim_back[!trim_back %in% existing_seq][1]
-
-  if (!is.na(last_missing)) {
-    isotope_template <-
-      isotope_template[isotope_template$isotope_seq > last_missing, ]
-  }
-
-  # --- Step 5: Compute fit ---
-  fit <- 0
-  if (length(isotope_template$intensity) >= 5) {
-    if (score == "pearson") {
-      fit <- sats::cor(isotope_template$intensity,
-                 isotope_template$centroided_intensity)
-      plot_title <- paste0("Pearson correlation coefficient: ", fit)
-    }else if (score == "cosine") {
-      template_intensity <- isotope_template$intensity
-      isotope_intensity <- isotope_template$centroided_intensity
-      offset <- min(template_intensity, isotope_intensity, na.rm = TRUE) *
-        cosine_score_correction
-      template_intensity <- template_intensity - offset
-      isotope_intensity <- isotope_intensity - offset
-      fit <- lsa::cosine(template_intensity, isotope_intensity)[[1]]
-      plot_title <- paste0("Cosine score: ", fit)
-    }
-  }else {
-    plot_title <- ""
-  }
-
-  # --- Step 6: Optional plot ---
-  if (plot) {
-    p <- ggplot2::ggplot() +
-      ggplot2::geom_bar(
-        data = spectrum,
-        ggplot2::aes(x = .data$mz, y = .data$centroided_intensity),
-        stat = "identity",
-        fill = "red",
-        alpha = 0.7,
-        width = 0.05
-      ) +
-      ggplot2::geom_bar(
-        data = isotope_template,
-        ggplot2::aes(x = .data$mz, y = .data$intensity),
-        stat = "identity",
-        fill = "blue",
-        alpha = 0.7,
-        width = 0.05
-      ) +
-      ggplot2::labs(title = plot_title, x = "m/z", y = "Intensity") +
-      ggplot2::theme_classic() +
-      ggplot2::theme(
-        panel.grid = ggplot2::element_blank(),
-        plot.title = ggplot2::element_text(hjust = 0.5)
-      ) +
-      ggplot2::scale_y_continuous(
-        expand = c(0, 0),
-        limits = c(
-          0,
-          max(spectrum$centroided_intensity) * 1.05
-        )
-      )
-
-    suppressWarnings(print(p))
-  }
-
-  fit
 }
 
 compute_qvalues <- function(targets, decoys, cutoff, dec = TRUE) {

@@ -12,7 +12,7 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 
 // isotopefit_opt_cpp
 Rcpp::NumericVector isotopefit_opt_cpp(const DataFrame& spectrum, const DataFrame& isotope_template, double poi, double ppm_tolerance, double cosine_score_correction, NumericVector minimal_isotope_sequence, std::string score);
-RcppExport SEXP _IsotopeExtractor_isotopefit_opt_cpp(SEXP spectrumSEXP, SEXP isotope_templateSEXP, SEXP poiSEXP, SEXP ppm_toleranceSEXP, SEXP cosine_score_correctionSEXP, SEXP minimal_isotope_sequenceSEXP, SEXP scoreSEXP) {
+RcppExport SEXP _IsoTrac_isotopefit_opt_cpp(SEXP spectrumSEXP, SEXP isotope_templateSEXP, SEXP poiSEXP, SEXP ppm_toleranceSEXP, SEXP cosine_score_correctionSEXP, SEXP minimal_isotope_sequenceSEXP, SEXP scoreSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -29,11 +29,11 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_IsotopeExtractor_isotopefit_opt_cpp", (DL_FUNC) &_IsotopeExtractor_isotopefit_opt_cpp, 7},
+    {"_IsoTrac_isotopefit_opt_cpp", (DL_FUNC) &_IsoTrac_isotopefit_opt_cpp, 7},
     {NULL, NULL, 0}
 };
 
-RcppExport void R_init_IsotopeExtractor(DllInfo *dll) {
+RcppExport void R_init_IsoTrac(DllInfo *dll) {
     R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
     R_useDynamicSymbols(dll, FALSE);
 }

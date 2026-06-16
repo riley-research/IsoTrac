@@ -1,3 +1,22 @@
+#' Plot Mass Spectrometry Spectra to PDF
+#'
+#' This function iterates through unique spectrum IDs inside the mass spec data,
+#' and exports a single multi-page PDF document containing line plots for each spectrum.
+#' The number above each PTCR slice are the determined charge states for that slice.
+#'
+#' @param full_mgf \code{data.frame}. The data imported using the \code{\link{import_spectra}}
+#' function.
+#' @param output_folder A character string specifying the directory path where
+#'   the output PDF \code{"all_spectra_plot.pdf"} should be saved.
+#'
+#' @return No return value. The function is called for its side effect of writing
+#'   a PDF file to the specified \code{output_folder}.
+#'
+#' @importFrom dplyr filter mutate lead reframe bind_rows arrange .data
+#' @importFrom ggplot2 ggplot aes geom_line geom_text labs theme_bw theme element_blank element_text scale_x_continuous
+#' @importFrom grDevices pdf dev.off
+#'
+#' @export
 plot_spectra <- function(full_mgf, output_folder) {
   outputfile <- paste(normalizePath(output_folder,
                                     winslash = "/", mustWork = FALSE),
