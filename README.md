@@ -39,7 +39,7 @@ threshold <- get_fdr_threshold(my_mgf, my_fdr, aa_seq, protein_mass,
 
 
 results <- extract_isotopes(my_mgf, aa_seq, protein_mass, threshold = 0.9, score = "pearson", number_of_cores =  2,
-                                 minimal_isotope_sequence = c(-3, -2, -1, 0, 1, 2, 3), isotope_peaks_included = 11, nrmse_cutoff = 45,
+                                 minimal_isotope_sequence = c(-3, -2, -1, 0, 1, 2, 3), isotope_peaks_included = 4, nrmse_cutoff = 45,
                                  output_folder = "C:/Analysis")
 
 results$founddf
