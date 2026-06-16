@@ -46,7 +46,7 @@ results$founddf
 results$nonefounddf
 ```
 
-For further documentation, please see the vignettes and manual in the XXX folder.
+For further documentation, please see the vignettes and manual in the docs folder on this GitHub.
 
 The documentation is also available through R by running ? followed by the function name. For example:
 
