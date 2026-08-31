@@ -322,7 +322,7 @@ runner_parallel <- function(all_frames,
     "get_isotope_template",
     "isotopefit_opt_cpp"
   ),
-  future.packages = c("dplyr", "ggplot2", "tidyr", "enviPat", "IsotopeExtractor", "Rcpp"))
+  future.packages = c("dplyr", "ggplot2", "tidyr", "enviPat", "IsoTrac", "Rcpp"))
 
   return(results)
 }
